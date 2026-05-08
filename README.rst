@@ -1,5 +1,7 @@
-# Cluster confirmations
-- Confirmed working on V100 - May 2026
+Cluster Confirmations
+=====================
+
+* Confirmed working on V100 - May 2026
 
 
 .. |Docs| image:: https://github.com/EinarOlafsson/spacr/actions/workflows/pages/pages-build-deployment/badge.svg
