@@ -1,3 +1,6 @@
+Confirmed working on V100 - May 2026
+
+
 .. |Docs| image:: https://github.com/EinarOlafsson/spacr/actions/workflows/pages/pages-build-deployment/badge.svg
    :target: https://einarolafsson.github.io/spacr/index.html
 .. |PyPI version| image:: https://badge.fury.io/py/spacr.svg
