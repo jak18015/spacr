@@ -1325,7 +1325,7 @@ def measure_crop(settings):
             else:
                 settings['cytoplasm'] = False
 
-            spacr_cores = int(mp.cpu_count() - 6)
+            spacr_cores = int(mp.cpu_count() - 2)  # Reserve 2 cores for other processes
             if spacr_cores <= 2:
                 spacr_cores = 1
 
