@@ -1031,13 +1031,39 @@ def attach_column_picker(field: QWidget, db_path_getter: Any,
 
     wrapper = QWidget(parent)
     wrapper.setObjectName("ColumnPickerRow")
-    old = host.replaceWidget(field, wrapper)
-    if old is not None:
-        del old
+    # The layout exists before the swap so `field` can be given its new owner
+    # in the same breath as losing its old one -- see below.
     row = QHBoxLayout(wrapper)
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(4)
+
+    # ``QLayout.replaceWidget`` detaches `field` and hands us the QLayoutItem
+    # that used to hold it, WITH OWNERSHIP. Two things follow, and getting
+    # either wrong is a use-after-free that lands nowhere near here:
+    #
+    #   1. Between the replace and the re-add, `field` is in no layout. Do
+    #      anything that can run Python's pending calls in that window and
+    #      shiboken can decide the widget is Python-owned, because nothing on
+    #      the C++ side is claiming it. It then has two owners -- the parent
+    #      chain and Python -- and whichever destroys it second dereferences
+    #      freed memory. So the re-add happens immediately, with nothing
+    #      between the two calls.
+    #   2. The returned item must not be destroyed while that window is open.
+    #      Releasing it (`del`, or just letting it fall out of scope) destroys
+    #      the QWidgetItem still pointing at `field`, which is exactly the
+    #      ownership flip in (1). Keeping it alive on the wrapper costs one
+    #      inert object per picker row and closes the window for good: the
+    #      item is out of every layout, so nothing ever traverses it again.
+    #
+    # The crash this prevents surfaces as SIGSEGV in
+    # `Shiboken::callCppDestructor<QLineEdit>` under `mainThreadDeletionHandler`,
+    # fired from `_make_pending_calls` at whatever bytecode boundary happened
+    # to come next -- typically inside an unrelated eventFilter, minutes after
+    # the dialog that owned the field was closed.
+    old = host.replaceWidget(field, wrapper)
     row.addWidget(field, 1)
+    if old is not None:
+        wrapper._spacr_replaced_item = old
     row.addWidget(button, 0)
     # Visibility is deliberately left alone. Qt's own reparent-into-layout
     # path handles it: QWidget::setParent clears WA_WState_ExplicitShowHide

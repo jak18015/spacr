@@ -880,3 +880,99 @@ def test_the_name_edit_is_exposed_for_hosts_that_want_to_focus_it(qtbot,
     assert isinstance(d.name_edit(), QLineEdit)
     d.name_edit().setText("annotate")
     assert d.chosen_column() == "annotate"
+
+
+# ---------------------------------------------------------------------------
+# Widget ownership across the layout swap
+# ---------------------------------------------------------------------------
+#
+# attach_column_picker pulls the field out of its layout and puts it into a
+# wrapper. QLayout.replaceWidget hands back the old QLayoutItem WITH
+# OWNERSHIP, so for a moment the field belongs to no layout. Destroy that
+# item, or let anything run, while the window is open and shiboken can decide
+# the widget is Python-owned -- giving it two owners and a double free that
+# surfaces much later as SIGSEGV in callCppDestructor<QLineEdit>.
+
+
+def test_the_field_is_reparented_onto_the_wrapper(qtbot):
+    """After the swap the field must have a C++ owner, not just a Python one."""
+    from PySide6.QtWidgets import QFormLayout, QLineEdit, QWidget
+    from spacr.qt.widgets.column_picker import attach_column_picker
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    form = QFormLayout(host)
+    field = QLineEdit(host)
+    form.addRow("Column", field)
+
+    attach_column_picker(field, "", "png_list", layout=form)
+
+    wrapper = field.parentWidget()
+    assert wrapper is not None
+    assert wrapper.objectName() == "ColumnPickerRow"
+    assert wrapper.layout().indexOf(field) >= 0
+
+
+def test_the_replaced_layout_item_is_retained_not_destroyed(qtbot):
+    """The QLayoutItem replaceWidget returns is kept alive on the wrapper.
+
+    Releasing it destroys a QWidgetItem still pointing at the field, which is
+    the ownership flip that causes the crash. It must outlive the swap.
+    """
+    from PySide6.QtWidgets import QFormLayout, QLineEdit, QWidget
+    from spacr.qt.widgets.column_picker import attach_column_picker
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    form = QFormLayout(host)
+    field = QLineEdit(host)
+    form.addRow("Column", field)
+
+    attach_column_picker(field, "", "png_list", layout=form)
+
+    wrapper = field.parentWidget()
+    assert getattr(wrapper, "_spacr_replaced_item", None) is not None
+
+
+def test_the_field_survives_a_gc_pass_after_attaching(qtbot):
+    """A collection right after the swap must not take the field with it.
+
+    This is the shape of the real crash: the field is still perfectly usable
+    from Python and from C++ after the garbage collector has run.
+    """
+    import gc
+
+    from PySide6.QtWidgets import QFormLayout, QLineEdit, QWidget
+    from spacr.qt.widgets.column_picker import attach_column_picker
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    form = QFormLayout(host)
+    field = QLineEdit(host)
+    form.addRow("Column", field)
+
+    attach_column_picker(field, "", "png_list", layout=form)
+    gc.collect()
+
+    field.setText("annotate")           # touches the C++ object
+    assert field.text() == "annotate"
+    assert field.parentWidget() is not None
+
+
+def test_the_host_keeps_using_its_own_reference_to_the_field(qtbot):
+    """The screen that built the field goes on using it unchanged."""
+    from PySide6.QtWidgets import QFormLayout, QLineEdit, QWidget
+    from spacr.qt.widgets.column_picker import attach_column_picker
+
+    host = QWidget()
+    qtbot.addWidget(host)
+    form = QFormLayout(host)
+    field = QLineEdit(host)
+    field.setText("before")
+    form.addRow("Column", field)
+
+    attach_column_picker(field, "", "png_list", layout=form)
+
+    assert field.text() == "before"
+    field.setText("after")
+    assert field.text() == "after"
