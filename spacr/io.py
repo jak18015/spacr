@@ -2147,7 +2147,13 @@ def _save_model(model, model_type, results_dict, dst, epoch, epochs,
                 # FIX: accept an optional validation dict for checkpoint decisions
                 # WHY: the original used train_dict, so checkpoints reflected memorization
                 #      not generalization — val metrics are the correct signal
-                val_dict=None):
+                val_dict=None,
+                # FIX: accept an explicit "this is the best epoch so far" flag
+                # WHY: the fixed intermedeate_save thresholds (0.94-0.99) never fire on
+                #      real datasets that plateau below 94% val accuracy, so the only file
+                #      ever written was the final epoch's — silently discarding the actual
+                #      best model of the run once the backbone starts overfitting
+                is_best=False):
     """
     Save the model based on certain conditions during training.
 
@@ -2158,17 +2164,24 @@ def _save_model(model, model_type, results_dict, dst, epoch, epochs,
         dst (str): The destination directory to save the model.
         epoch (int): The current epoch number.
         epochs (int): The total number of epochs.
-        intermedeate_save (list, optional): List of accuracy thresholds to trigger intermediate model saves. 
+        intermedeate_save (list, optional): List of accuracy thresholds to trigger intermediate model saves.
                                             Defaults to [0.99, 0.98, 0.95, 0.94].
         channels (list, optional): List of channels used. Defaults to ['r', 'g', 'b'].
+        is_best (bool, optional): If True, unconditionally persist this epoch as the best
+                                  checkpoint so far, overwriting any previous best. Defaults to False.
     """
-    
+
     channels_str = ''.join(channels)
 
     def save_model_at_threshold(threshold, epoch, suffix=""):
         percentile = str(threshold * 100)
         print(f'Found: {percentile}% accurate model')
         model_path = f'{dst}/{model_type}_epoch_{str(epoch)}{suffix}_acc_{percentile}_channels_{channels_str}.pth'
+        torch.save(model, model_path)
+        return model_path
+
+    if is_best:
+        model_path = f'{dst}/{model_type}_best_channels_{channels_str}.pth'
         torch.save(model, model_path)
         return model_path
 

@@ -810,10 +810,14 @@ def train_model(src,dst, model_type, train_loaders, epochs=100, learning_rate=0.
             accumulated_test_dicts = []
 
         # pass val_dict to _save_model so checkpoint decisions use validation accuracy
+        # FIX: always persist a new best-so-far checkpoint on validation accuracy, not just
+        # at the fixed 0.94-0.99 thresholds, which rarely fire on real (non-toy) datasets
+        is_best = val_dict is not None and val_dict.get('accuracy', 0.0) >= best_val_acc
         model_path = _save_model(model, model_type, train_dict, dst, epoch, epochs,
                                  intermedeate_save=[0.99, 0.98, 0.95, 0.94],
                                  channels=channels,
-                                 val_dict=val_dict)  # FIX: new argument
+                                 val_dict=val_dict,
+                                 is_best=is_best)  # FIX: new argument
 
         # track the best model path based on validation accuracy
         if model_path is not None and val_dict is not None:
